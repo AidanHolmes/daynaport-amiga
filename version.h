@@ -12,6 +12,6 @@
 #define DEVICEREVISION 5
 #define DEVICEEXTRA
 /* #define DEVICEEXTRA Beta */
-#define DEVICEDATE     2026-02-19
+#define DEVICEDATE     2026-03-09
 
 #endif
