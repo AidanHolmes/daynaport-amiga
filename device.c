@@ -332,16 +332,16 @@ __saveds LONG DevOpen( ASMR(a1) struct IOSana2Req *ioreq ASMREG(a1), ASMR(d0) UL
 	
 	struct BufferManagement *bm;
 	if ((bm = (struct BufferManagement*)AllocVec(sizeof(struct BufferManagement), MEMF_CLEAR|MEMF_PUBLIC))) {
-		if (!(bm->bm_CopyToBuffer = (BMFunc)GetTagData(S2_CopyToBuff32, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
+		//if (!(bm->bm_CopyToBuffer = (BMFunc)GetTagData(S2_CopyToBuff32, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
 			if (!(bm->bm_CopyToBuffer = (BMFunc)GetTagData(S2_CopyToBuff16, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
 				bm->bm_CopyToBuffer = (BMFunc)GetTagData(S2_CopyToBuff, 0, (struct TagItem *)ioreq->ios2_BufferManagement);
 			}
-		}
-		if (!(bm->bm_CopyFromBuffer = (BMFunc)GetTagData(S2_CopyFromBuff32, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
+		//}
+		//if (!(bm->bm_CopyFromBuffer = (BMFunc)GetTagData(S2_CopyFromBuff32, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
 			if (!(bm->bm_CopyFromBuffer = (BMFunc)GetTagData(S2_CopyFromBuff16, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
 				bm->bm_CopyFromBuffer = (BMFunc)GetTagData(S2_CopyFromBuff, 0, (struct TagItem *)ioreq->ios2_BufferManagement);
 			}
-		}
+		//}
 		
 		ioreq->ios2_BufferManagement = (VOID *)bm;
 		ioreq->ios2_Req.io_Error = 0;
@@ -444,6 +444,7 @@ __saveds VOID DevBeginIO( ASMR(a1) struct IOSana2Req *ioreq ASMREG(a1), ASMR(a6)
 		break;
 		
 	case CMD_READ:
+		D(("R"));
 		if (ioreq->ios2_BufferManagement == NULL) {
 			ioreq->ios2_Req.io_Error = S2ERR_BAD_ARGUMENT;
 			ioreq->ios2_WireError = S2WERR_BUFF_ERROR;
@@ -460,6 +461,7 @@ __saveds VOID DevBeginIO( ASMR(a1) struct IOSana2Req *ioreq ASMREG(a1), ASMR(a6)
 		break;
 
 	case S2_GETGLOBALSTATS:
+		D(("GETGLOBALSTATS"));
 		memcpy(ioreq->ios2_StatData, &db->db_DevStats, sizeof(struct Sana2DeviceStats));
 		break;
 
@@ -473,6 +475,7 @@ __saveds VOID DevBeginIO( ASMR(a1) struct IOSana2Req *ioreq ASMREG(a1), ASMR(a6)
 		}
 		// fall through!	
 	case CMD_WRITE: 
+		D(("W"));
 		if (ioreq->ios2_BufferManagement == NULL) {
 			ioreq->ios2_Req.io_Error = S2ERR_BAD_ARGUMENT;
 			ioreq->ios2_WireError = S2WERR_BUFF_ERROR;
@@ -499,7 +502,7 @@ __saveds VOID DevBeginIO( ASMR(a1) struct IOSana2Req *ioreq ASMREG(a1), ASMR(a6)
            ioreq->ios2_Req.io_Error = 0;
            ioreq->ios2_WireError &= (S2EVENT_ONLINE|S2EVENT_OFFLINE);
 		   ioreq->ios2_Req.io_Flags |= SANA2IOF_QUICK;
-		   D(("S2_ONEVENT: reply quick"));
+		   D(("S2_ONEVENT: reply quick, wireerror 0x%04X", ioreq->ios2_WireError));
            DevTermIO(db, (struct IORequest*)ioreq);
            ioreq = NULL;
       } else{
@@ -856,13 +859,19 @@ __saveds void frame_proc() {
 	ObtainSemaphore(&db->db_ProcSem);
   
 	// Temporary packet store
-	UBYTE* packetData;
+	UBYTE *_packetData, *packetData;
 	struct IOSana2Req** pendingSends = NULL;
 	if (db->db_amigaNetMode) {	
-		 packetData = AllocVec(db->db_maxPacketsSize + 2, MEMF_PUBLIC);	
+		 _packetData = AllocVec(db->db_maxPacketsSize + 2 + 1, MEMF_PUBLIC);	
 		 pendingSends = (struct IOSana2Req**)AllocVec(db->db_maxPackets * sizeof(struct IOSana2Req*), MEMF_PUBLIC);	
-	} else packetData = AllocVec(SCSIWIFI_PACKET_MAX_SIZE + 6, MEMF_PUBLIC);	
-	
+	} else{ 
+		_packetData = AllocVec(SCSIWIFI_PACKET_MAX_SIZE + 6 + 1, MEMF_PUBLIC);	
+	}
+	if ((ULONG)_packetData & 0x00000001){
+		packetData = _packetData + 1;
+	}else{
+		packetData = _packetData;
+	}
 	struct MsgPort timerPort;
 	timerPort.mp_Node.ln_Pri = 0;                       
 	timerPort.mp_SigBit      = AllocSignal(-1);
@@ -927,7 +936,7 @@ __saveds void frame_proc() {
 		if (!packetData) {
 			logMessage(db,"PacketServer: Out of memory [1]");
 			D(("scsidayna_task: Out of memory [1]\n")); 
-		} else FreeVec(packetData);
+		} else FreeVec(_packetData);
 				
 		if (((char)timerPort.mp_SigBit)>=0) FreeSignal(timerPort.mp_SigBit);
 		ReplyMsg((struct Message*)init);
@@ -1309,7 +1318,7 @@ __saveds void frame_proc() {
 	SCSIWifi_enable(scsiDevice, 0); 
 	DoEvent(db, S2EVENT_OFFLINE);
 	rejectAllPackets(db);
-	FreeVec(packetData);
+	FreeVec(_packetData);
 	if (pendingSends) FreeVec(pendingSends);
 	
 	SCSIWifi_close(scsiDevice);
