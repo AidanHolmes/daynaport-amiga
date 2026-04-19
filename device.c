@@ -332,16 +332,13 @@ __saveds LONG DevOpen( ASMR(a1) struct IOSana2Req *ioreq ASMREG(a1), ASMR(d0) UL
 	
 	struct BufferManagement *bm;
 	if ((bm = (struct BufferManagement*)AllocVec(sizeof(struct BufferManagement), MEMF_CLEAR|MEMF_PUBLIC))) {
-		//if (!(bm->bm_CopyToBuffer = (BMFunc)GetTagData(S2_CopyToBuff32, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
-			if (!(bm->bm_CopyToBuffer = (BMFunc)GetTagData(S2_CopyToBuff16, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
-				bm->bm_CopyToBuffer = (BMFunc)GetTagData(S2_CopyToBuff, 0, (struct TagItem *)ioreq->ios2_BufferManagement);
-			}
-		//}
-		//if (!(bm->bm_CopyFromBuffer = (BMFunc)GetTagData(S2_CopyFromBuff32, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
-			if (!(bm->bm_CopyFromBuffer = (BMFunc)GetTagData(S2_CopyFromBuff16, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
-				bm->bm_CopyFromBuffer = (BMFunc)GetTagData(S2_CopyFromBuff, 0, (struct TagItem *)ioreq->ios2_BufferManagement);
-			}
-		//}
+		if (!(bm->bm_CopyToBuffer = (BMFunc)GetTagData(S2_CopyToBuff16, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
+			bm->bm_CopyToBuffer = (BMFunc)GetTagData(S2_CopyToBuff, 0, (struct TagItem *)ioreq->ios2_BufferManagement);
+		}
+
+		if (!(bm->bm_CopyFromBuffer = (BMFunc)GetTagData(S2_CopyFromBuff16, 0, (struct TagItem *)ioreq->ios2_BufferManagement))){
+			bm->bm_CopyFromBuffer = (BMFunc)GetTagData(S2_CopyFromBuff, 0, (struct TagItem *)ioreq->ios2_BufferManagement);
+		}
 		
 		ioreq->ios2_BufferManagement = (VOID *)bm;
 		ioreq->ios2_Req.io_Error = 0;
@@ -859,19 +856,15 @@ __saveds void frame_proc() {
 	ObtainSemaphore(&db->db_ProcSem);
   
 	// Temporary packet store
-	UBYTE *_packetData, *packetData;
+	UBYTE *packetData;
 	struct IOSana2Req** pendingSends = NULL;
 	if (db->db_amigaNetMode) {	
-		 _packetData = AllocVec(db->db_maxPacketsSize + 2 + 1, MEMF_PUBLIC);	
+		 packetData = AllocVec(db->db_maxPacketsSize + 2, MEMF_PUBLIC);	
 		 pendingSends = (struct IOSana2Req**)AllocVec(db->db_maxPackets * sizeof(struct IOSana2Req*), MEMF_PUBLIC);	
 	} else{ 
-		_packetData = AllocVec(SCSIWIFI_PACKET_MAX_SIZE + 6 + 1, MEMF_PUBLIC);	
+		packetData = AllocVec(SCSIWIFI_PACKET_MAX_SIZE + 6, MEMF_PUBLIC);	
 	}
-	if ((ULONG)_packetData & 0x00000001){
-		packetData = _packetData + 1;
-	}else{
-		packetData = _packetData;
-	}
+
 	struct MsgPort timerPort;
 	timerPort.mp_Node.ln_Pri = 0;                       
 	timerPort.mp_SigBit      = AllocSignal(-1);
@@ -936,7 +929,7 @@ __saveds void frame_proc() {
 		if (!packetData) {
 			logMessage(db,"PacketServer: Out of memory [1]");
 			D(("scsidayna_task: Out of memory [1]\n")); 
-		} else FreeVec(_packetData);
+		} else FreeVec(packetData);
 				
 		if (((char)timerPort.mp_SigBit)>=0) FreeSignal(timerPort.mp_SigBit);
 		ReplyMsg((struct Message*)init);
@@ -1318,7 +1311,7 @@ __saveds void frame_proc() {
 	SCSIWifi_enable(scsiDevice, 0); 
 	DoEvent(db, S2EVENT_OFFLINE);
 	rejectAllPackets(db);
-	FreeVec(_packetData);
+	FreeVec(packetData);
 	if (pendingSends) FreeVec(pendingSends);
 	
 	SCSIWifi_close(scsiDevice);
